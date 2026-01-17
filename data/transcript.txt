@@ -1,0 +1,16 @@
+Tanisha: The client demo didn’t go very well yesterday.
+Surya: They seemed confused about the navigation flow.
+Tanisha: Yeah, especially on the reports page.
+Surabhi: From the backend side, the data API was stable, so performance wasn’t the issue.
+Tanisha: Okay. We might need to rethink how we present the data.
+Surya: I can explore a simpler layout and prepare a quick redesign proposal.
+Surabhi: If there are UI changes, I’ll need to adjust the frontend components accordingly.
+Tanisha: That makes sense. Let’s not touch production until we’re aligned.
+Surabhi: Should we still test the new build that was generated last night?
+Tanisha: That build was only for internal testing. Let’s wait.
+Tanisha: Also, the client asked whether we can add export to Excel.
+Surabhi: That’s doable, but it will take some effort.
+Tanisha: Okay, keep that in mind for the next sprint.
+Tanisha: For now, I’ll update the client saying we’re reviewing their feedback.
+Tanisha: Once the redesign option is ready, we should have another discussion.
+Tanisha: I’ll create and schedule a follow-up meeting for early next week.
