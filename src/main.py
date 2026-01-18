@@ -1,119 +1,97 @@
-import json
+import json, os
 from action_extractor import extract_actions
 from role_assigner import assign_roles
 from dag_builder import build_dag
-from email_sender import send_email   
+from email_sender import send_email
 
-# ----------------------------
-# Load transcript
-# ----------------------------
+# ---------- Load transcript ----------
 with open("data/transcript.txt") as f:
-    lines = [l.strip() for l in f.readlines() if l.strip()]
+    lines = [l.strip() for l in f if l.strip()]
 
-# ----------------------------
-# Extract actions + roles
-# ----------------------------
 actions = extract_actions(lines)
 roles = assign_roles(actions)
 
-# ----------------------------
-# Build tasks
-# ----------------------------
 tasks = []
 for i, (a, r) in enumerate(zip(actions, roles)):
     tasks.append({
         "id": f"task_{i}",
         "text": a["text"],
-        "assignee": r["assignee"],   # role
+        "role": r["assignee"],
         "confidence": a["confidence"]
     })
 
-# ----------------------------
-# Build DAG
-# ----------------------------
 edges = build_dag(tasks)
 
-workflow = {
-    "tasks": tasks,
-    "edges": edges
-}
-
 with open("output/workflow.json", "w") as f:
-    json.dump(workflow, f, indent=2)
+    json.dump({
+        "tasks": tasks,
+        "edges": edges
+    }, f, indent=2)
 
-print("✅ Workflow generated → output/workflow.json")
 
-# ==========================================================
-# EMAIL SENDING PART
-# ==========================================================
+# ---------- Load participants from Downloads ----------
+downloads = os.path.join(os.path.expanduser("~"), "Downloads")
+participants_path = os.path.join(downloads, "participants.json")
 
-# ----------------------------
-# Load participants
-# ----------------------------
-try:
-    with open("frontend/participants.json") as f:
-        participants = json.load(f)
-except FileNotFoundError:
-    print("⚠️ No participants.json found — skipping email sending")
-    exit(0)
+with open(participants_path) as f:
+    participants = json.load(f)
 
-# role → {name, email}
-role_map = {
-    p["role"]: {
-        "name": p["name"],
-        "email": p["email"]
-    }
-    for p in participants
-}
+# ---------- Resolve owner ----------
+def resolve_owner(task):
+    text = task["text"].lower()
+    for p in participants:
+        if p["name"].lower() in text:
+            return p
+    for p in participants:
+        if p["role"] == task["role"]:
+            return p
+    return None
 
-# ----------------------------
-# Group tasks per role
-# ----------------------------
-tasks_by_role = {}
-for task in tasks:
-    if task["confidence"] < 0.6:
-        continue  # safety gate
+tasks_by_person = {}
 
-    role = task["assignee"]
-    tasks_by_role.setdefault(role, []).append(task)
-
-# ----------------------------
-# Send one email per person
-# ----------------------------
-for role, person_tasks in tasks_by_role.items():
-    if role not in role_map:
+for t in tasks:
+    owner = resolve_owner(t)
+    if not owner:
         continue
 
-    name = role_map[role]["name"]
-    email = role_map[role]["email"]
+    tasks_by_person.setdefault(owner["email"], {
+        "name": owner["name"],
+        "email": owner["email"],
+        "tasks": []
+    })["tasks"].append(t)
 
-    body_lines = [
-        f"Hi {name},",
-        "",
-        "From today’s meeting, here are the action items assigned to you:",
-        ""
-    ]
+# ---------- Email + confirmation logic ----------
+for person in tasks_by_person.values():
+    high = [t for t in person["tasks"] if t["confidence"] >= 0.75]
+    low = [t for t in person["tasks"] if t["confidence"] < 0.75]
 
-    for t in person_tasks:
-        body_lines.append(f"• {t['text']}")
+    if high:
+        body = [
+            f"Hi {person['name']},",
+            "",
+            "From today’s meeting, here are your action items:",
+            ""
+        ]
 
-        deps = [e["from"] for e in edges if e["to"] == t["id"]]
-        if deps:
-            body_lines.append(f"  ↳ Depends on: {', '.join(deps)}")
+        for t in high:
+            body.append(f"• {t['text']}")
 
+        body.extend([
+            "",
+            "Please reply if anything looks incorrect."
+        ])
 
-    body_lines.extend([
-        "",
-        "This email was auto-generated from meeting notes.",
-        "Please reply if anything looks incorrect."
-    ])
+        send_email(
+            person["email"],
+            "Your action items from today’s meeting",
+            "\n".join(body)
+        )
 
-    body = "\n".join(body_lines)
+    for t in low:
+        print(f"❓ Needs confirmation before sending: {t['text']} → {person['name']}")
 
-    subject = "Your action items from today’s meeting"
+# ---------- Save workflow ----------
+with open("output/workflow.json", "w") as f:
+    json.dump({"tasks": tasks, "edges": edges}, f, indent=2)
 
-    send_email(email, subject, body)
-
-    print(f"📧 Sent tasks to {name} ({email})")
-
-print("✅ Email dispatch complete")
+print("✅ Workflow generated and emails processed")
