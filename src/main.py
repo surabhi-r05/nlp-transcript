@@ -1,8 +1,18 @@
+from name_extractor import extract_names
+
+with open("data/transcript.txt") as f:
+    lines = [l.strip() for l in f if l.strip()]
+
+names = extract_names(lines)
+print("👥 Detected participants:", names)
+
 import json, os
 from action_extractor import extract_actions
 from role_assigner import assign_roles
 from dag_builder import build_dag
 from email_sender import send_email
+import glob
+
 
 # ---------- Load transcript ----------
 with open("data/transcript.txt") as f:
@@ -30,11 +40,22 @@ with open("output/workflow.json", "w") as f:
 
 
 # ---------- Load participants from Downloads ----------
+
+
 downloads = os.path.join(os.path.expanduser("~"), "Downloads")
-participants_path = os.path.join(downloads, "participants.json")
+
+files = glob.glob(os.path.join(downloads, "participants*.json"))
+if not files:
+    raise FileNotFoundError("No participants.json found in Downloads")
+
+# Pick the most recently modified file
+participants_path = max(files, key=os.path.getmtime)
 
 with open(participants_path) as f:
     participants = json.load(f)
+
+print(f"✅ Using participants file: {os.path.basename(participants_path)}")
+
 
 # ---------- Resolve owner ----------
 def resolve_owner(task):

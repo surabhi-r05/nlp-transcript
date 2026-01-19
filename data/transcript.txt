@@ -1,4 +1,4 @@
-Tanisha: Hey everyone, thanks for joining.
+Riya: Hey everyone, thanks for joining.
 Tanisha: Let’s quickly go over the client demo feedback from yesterday.
 Tanisha: The client demo feedback was not great.
 Surya: Yeah, the navigation flow confused them, especially on the reports page.
