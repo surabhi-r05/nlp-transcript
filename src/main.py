@@ -1,6 +1,6 @@
 from name_extractor import extract_names
 
-with open("data/transcript.txt") as f:
+with open("data/trans4.txt") as f:
     lines = [l.strip() for l in f if l.strip()]
 
 names = extract_names(lines)
@@ -11,11 +11,12 @@ from action_extractor import extract_actions
 from role_assigner import assign_roles
 from dag_builder import build_dag
 from email_sender import send_email
+from slack_confirm import ask_confirmation
 import glob
 
 
 # ---------- Load transcript ----------
-with open("data/transcript.txt") as f:
+with open("data/trans4.txt") as f:
     lines = [l.strip() for l in f if l.strip()]
 
 actions = extract_actions(lines)
@@ -57,36 +58,48 @@ with open(participants_path) as f:
 print(f"✅ Using participants file: {os.path.basename(participants_path)}")
 
 
-# ---------- Resolve owner ----------
-def resolve_owner(task):
+# ---------- Resolve owners ----------
+def resolve_owners(task):
     text = task["text"].lower()
+    owners = []
+
+    # 1️⃣ Name-based matching (supports multiple people)
     for p in participants:
         if p["name"].lower() in text:
-            return p
-    for p in participants:
-        if p["role"] == task["role"]:
-            return p
-    return None
+            owners.append(p)
 
+    # 2️⃣ Role-based fallback ONLY if no names matched
+    if not owners:
+        for p in participants:
+            if p["role"] == task["role"]:
+                owners.append(p)
+
+    return owners
+
+
+# ---------- Group tasks by person ----------
 tasks_by_person = {}
 
 for t in tasks:
-    owner = resolve_owner(t)
-    if not owner:
+    owners = resolve_owners(t)
+    if not owners:
         continue
 
-    tasks_by_person.setdefault(owner["email"], {
-        "name": owner["name"],
-        "email": owner["email"],
-        "tasks": []
-    })["tasks"].append(t)
+    for owner in owners:
+        tasks_by_person.setdefault(owner["email"], {
+            "name": owner["name"],
+            "email": owner["email"],
+            "tasks": []
+        })["tasks"].append(t)
+
 
 # ---------- Email + confirmation logic ----------
 for person in tasks_by_person.values():
     high = [t for t in person["tasks"] if t["confidence"] >= 0.75]
-    low = [t for t in person["tasks"] if t["confidence"] < 0.75]
+    medium = [t for t in person["tasks"] if 0.5 <= t["confidence"] < 0.75]
+    low = [t for t in person["tasks"] if t["confidence"] < 0.5]
 
-    if high:
+    if high or medium:
         body = [
             f"Hi {person['name']},",
             "",
@@ -96,6 +109,9 @@ for person in tasks_by_person.values():
 
         for t in high:
             body.append(f"• {t['text']}")
+
+        for t in medium:
+            body.append(f"• {t['text']} (tentative)")
 
         body.extend([
             "",
@@ -108,8 +124,9 @@ for person in tasks_by_person.values():
             "\n".join(body)
         )
 
-    for t in low:
-        print(f"❓ Needs confirmation before sending: {t['text']} → {person['name']}")
+    for t in medium+low:
+        ask_confirmation(t, person)
+
 
 # ---------- Save workflow ----------
 with open("output/workflow.json", "w") as f:
