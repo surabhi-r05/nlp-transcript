@@ -44,7 +44,7 @@ ANNOUNCEMENT / NOTIFICATION RULES:
   inform, share, update, remind, or send a status update, or makes FYI statements,
   extract it as an action item.
 - Such actions may explicitly state that no action is required;
-  this does NOT invalidate them as action items.
+  this does NOT invalidate them as action items. (eg 'this statement is fyi for team, to keep everyone informed, no action required' - still extract as announcement action)
 - Do NOT invent recipients, channels, meetings, or follow-ups
   for announcement actions. Use ONLY what is stated.
 - When extracting announcement or notification actions,

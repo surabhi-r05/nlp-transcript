@@ -56,7 +56,7 @@ def build_dag(tasks):
         t_text = t["text"].lower()
 
         # -------- Relation 1: explicit temporal language --------
-        if any(k in t_text for k in ["after", "once", "when"]):
+        if any(k in t_text for k in ["after", "once", "when", "following", "upon", "as soon as","later","subsequent","next"]):
             for other in tasks:
                 if other["id"] == t["id"]:
                     continue
@@ -78,8 +78,20 @@ def build_dag(tasks):
                         "relation": "aggregation"
                     })
 
+        # -------- Rule 2b: review depends on design + build when explicitly stated --------
+        if semantics[t["id"]] == "REVIEW" and any(
+            k in t_text for k in ["after both", "after all", "once both","when both"]
+        ):
+            for other in tasks:
+                if semantics[other["id"]] in ["DESIGN", "BUILD"]:
+                    edges.append({
+                        "from": other["id"],
+                        "to": t["id"],
+                        "relation": "group_dependency"
+                    })
+
         # -------- Relation 3: collective completion --------
-        if any(k in t_text for k in ["once they", "after everything", "when all"]):
+        if any(k in t_text for k in ["once they", "after everything", "when all", "after all tasks","once all tasks","when all tasks","after all of them","at the end","when they're done"]):
             for other in tasks:
                 if other["id"] != t["id"] and not is_admin(other["text"].lower()):
                     edges.append({
