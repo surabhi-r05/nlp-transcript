@@ -14,9 +14,10 @@ INSTRUCTIONS:
 - Phrase each action as a clear task.
 - Include dates or times if mentioned.
 - Ignore greetings, opinions, or discussion.
+- Treat tentative language ("could", "can", "try", "maybe") as lower confidence.
 - If an action depends on another, express it using natural language
   ("after", "once", "when").
-
+  
 Assign a confidence score based on commitment strength.
 
 OUTPUT (JSON ONLY):
