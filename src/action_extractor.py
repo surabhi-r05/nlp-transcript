@@ -66,6 +66,26 @@ MEETING-SPECIFIC RULES:
 - If work is stated to happen BEFORE or AFTER a meeting,
   it IS an action item.
 
+NAME PRESERVATION IN DEPENDENCIES (CRITICAL):
+
+- Every extracted task MUST explicitly mention the PERSON NAME(s)
+  responsible for the task.
+- If a task depends on another task, the dependent task MUST also
+  explicitly mention the PERSON NAME of the person performing the
+  preceding task.
+
+Examples:
+- Correct: "Tanisha will review everything after Surabhi updates the frontend components."
+- Incorrect: "Tanisha will review everything after frontend updates are done."
+
+- Correct: "Tanisha will review everything after Surya completes the redesign and Surabhi updates the frontend."
+- Incorrect: "Tanisha will review everything after both tasks are done."
+
+- If multiple people are involved in the dependency, include ALL names.
+- Do NOT replace people with generic phrases like "the team", "the work", "the tasks", or "the frontend work".
+
+- Avoid using any apostrophes when mentioning any person's name
+
 CRITICAL ANTI-HALLUCINATION RULES:
 - Do NOT invent meetings, dates, times, deadlines, assignees,
   recipients, follow-ups, or next steps.
@@ -90,9 +110,31 @@ Transcript:
 {transcript}
 """
 
+def fix_utf8_mojibake(text: str) -> str:
+    """Repair common UTF-8 mojibake (e.g., â€™ → ’)"""
+    try:
+        return text.encode('latin1').decode('utf-8')
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return text
+
+def normalize_quotes(text: str) -> str:
+    """Optional: replace curly quotes with straight ones for robustness"""
+    replacements = {"‘": "'", "’": "'", "“": '"', "”": '"'}
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text
+
 def extract_actions(lines):
+    # 🔧 STEP 1: Clean input transcript
     transcript = "\n".join(lines)
+    transcript = fix_utf8_mojibake(transcript)
+    transcript = normalize_quotes(transcript)  # optional but recommended
+
+    # 🔧 STEP 2: Send clean transcript to LLM
     response = llm.invoke(PROMPT.format(transcript=transcript))
+
+    # 🔧 STEP 3: Also clean LLM response (in case it echoes corrupted text)
+    response = fix_utf8_mojibake(response)
 
     actions = []
     matches = re.findall(
@@ -101,6 +143,10 @@ def extract_actions(lines):
     )
 
     for text, conf in matches:
+        # 🔧 STEP 4: Clean extracted text too
+        text = fix_utf8_mojibake(text)
+        text = normalize_quotes(text)
+
         try:
             c = float(conf)
         except:

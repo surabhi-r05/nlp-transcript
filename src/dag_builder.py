@@ -36,75 +36,82 @@ def build_dag(tasks):
     edges = []
 
     def is_admin(text):
-        return any(k in text for k in ["meeting", "schedule"])
+        return any(k in text.lower() for k in ["meeting", "schedule", "agreed to a follow-up"])
 
-    def task_semantics(text):
-        t = text.lower()
-        if any(k in t for k in ["design", "redesign", "layout", "ux"]):
-            return "DESIGN"
-        if any(k in t for k in ["update", "fix", "implement", "frontend"]):
-            return "BUILD"
-        if any(k in t for k in ["review", "approve"]):
-            return "REVIEW"
-        if any(k in t for k in ["client", "inform"]):
-            return "COMM"
-        return "OTHER"
-
-    semantics = {t["id"]: task_semantics(t["text"]) for t in tasks}
+    assignees = {t["id"]: t["text"].split()[0] for t in tasks}
 
     for t in tasks:
         t_text = t["text"].lower()
+        current_assignee = assignees[t["id"]].lower()
 
-        # -------- Relation 1: explicit temporal language --------
-        if any(k in t_text for k in ["after", "once", "when", "following", "upon", "as soon as","later","subsequent","next"]):
+        # Rule 1: Single dependencies
+        temporal_single = ["after", "once", "when", "following", "upon", "as soon as", "next"]
+        if any(trigger in t_text for trigger in temporal_single):
             for other in tasks:
                 if other["id"] == t["id"]:
                     continue
-                name = other["text"].split()[0].lower()
-                if name in t_text and not is_admin(other["text"].lower()):
+                if is_admin(other["text"]):
+                    continue
+
+                other_assignee = assignees[other["id"]].lower()
+
+                # ✅ CRITICAL: Skip same assignee to avoid self-matching
+                if other_assignee == current_assignee:
+                    # BUT: allow one exception: if this is a COMM task mentioning "review"
+                    # and the other is a REVIEW task by the same person
+                    if ("review" in t_text and 
+                        "review" in other["text"].lower() and
+                        "client" in t_text):
+                        # Allow: review task → client update by same person
+                        pass
+                    else:
+                        continue
+
+                if other_assignee in t_text:
+                    edges.append({
+                        "from": other["id"],
+                        "to": t["id"],
+                        "relation": "temporal_after"
+                    })
+                elif (other_assignee == current_assignee and 
+                      "review" in other["text"].lower() and 
+                      "review" in t_text):
+                    # Fallback: if same person and both mention "review", link
                     edges.append({
                         "from": other["id"],
                         "to": t["id"],
                         "relation": "temporal_after"
                     })
 
-        # -------- Relation 2: review aggregates build --------
-        if semantics[t["id"]] == "REVIEW":
+        # Rule 2: Group dependencies
+        group_triggers = [
+            "after both", "once both", "when both",
+            "after all", "once all", "when all",
+            "after everything", "once everything", "when everything",
+            "after all tasks", "once all tasks", "when all tasks",
+            "after all of them", "once all of them", "when all of them",
+            "conditional on"
+        ]
+        if any(trigger in t_text for trigger in group_triggers):
             for other in tasks:
-                if semantics[other["id"]] == "BUILD":
-                    edges.append({
-                        "from": other["id"],
-                        "to": t["id"],
-                        "relation": "aggregation"
-                    })
+                if other["id"] == t["id"]:
+                    continue
+                if is_admin(other["text"]):
+                    continue
+                other_assignee = assignees[other["id"]].lower()
+                if other_assignee == current_assignee:
+                    continue  # keep this for group deps
+                edges.append({
+                    "from": other["id"],
+                    "to": t["id"],
+                    "relation": "group_dependency"
+                })
 
-        # -------- Rule 2b: review depends on design + build when explicitly stated --------
-        if semantics[t["id"]] == "REVIEW" and any(
-            k in t_text for k in ["after both", "after all", "once both","when both"]
-        ):
-            for other in tasks:
-                if semantics[other["id"]] in ["DESIGN", "BUILD"]:
-                    edges.append({
-                        "from": other["id"],
-                        "to": t["id"],
-                        "relation": "group_dependency"
-                    })
-
-        # -------- Relation 3: collective completion --------
-        if any(k in t_text for k in ["once they", "after everything", "when all", "after all tasks","once all tasks","when all tasks","after all of them","at the end","when they're done"]):
-            for other in tasks:
-                if other["id"] != t["id"] and not is_admin(other["text"].lower()):
-                    edges.append({
-                        "from": other["id"],
-                        "to": t["id"],
-                        "relation": "group_dependency"
-                    })
-
-    # -------- Deduplicate edges --------
+    # Deduplicate
     seen = set()
     final_edges = []
     for e in edges:
-        key = (e["from"], e["to"], e["relation"])
+        key = (e["from"], e["to"])
         if key not in seen:
             seen.add(key)
             final_edges.append(e)
